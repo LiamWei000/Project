@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXUS Engine - Indie RPG</title>
+<style>
+    :root { --ui-bg: rgba(15, 23, 42, 0.85); --accent: #3b82f6; }
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Consolas', monospace; color: white; user-select: none; }
+    canvas { display: block; image-rendering: pixelated; } /* Pixel art feel */
+    
+    #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    .panel { pointer-events: auto; background: var(--ui-bg); border: 2px solid #334155; border-radius: 4px; padding: 15px; position: absolute; box-shadow: 0 4px 6px rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+    
+    #player-stats { top: 20px; left: 20px; min-width: 200px; }
+    .stat-bar-bg { width: 100%; height: 12px; background: #1e293b; border-radius: 6px; margin-top: 4px; overflow: hidden; border: 1px solid #000; }
+    .stat-bar-fill { height: 100%; transition: width 0.1s linear; }
+    #bar-hp { background: #ef4444; }
+    #bar-mp { background: #3b82f6; }
+    #bar-exp { background: #eab308; }
+
+    #log-panel { bottom: 20px; left: 20px; width: 300px; height: 100px; overflow-y: hidden; font-size: 12px; color: #cbd5e1; }
+    .log-entry { margin-bottom: 4px; animation: fadein 0.3s; }
+    @keyframes fadein { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="ui-layer">
+    <div id="player-stats" class="panel">
+        <div style="font-weight: bold; font-size: 18px; margin-bottom: 10px;">Lvl <span id="ui-lvl">1</span> Hero</div>
+        HP: <span id="ui-hp">100</span>/<span id="ui-maxhp">100</span>
+        <div class="stat-bar-bg"><div id="bar-hp" class="stat-bar-fill" style="width: 100%;"></div></div>
+        MP: <span id="ui-mp">50</span>/<span id="ui-maxmp">50</span>
+        <div class="stat-bar-bg"><div id="bar-mp" class="stat-bar-fill" style="width: 100%;"></div></div>
+        EXP: <span id="ui-exp">0</span>/<span id="ui-nextexp">100</span>
+        <div class="stat-bar-bg"><div id="bar-exp" class="stat-bar-fill" style="width: 0%;"></div></div>
+    </div>
+
+    <div id="log-panel" class="panel">
+        <div id="combat-log"></div>
+    </div>
+</div>
+
+<script>
+/**
+ * ==========================================
+ * NEXUS RPG ENGINE (Miniature Build)
+ * ==========================================
+ * Arsitektur: Game Loop -> Input -> Update (dt) -> Render -> UI
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+
+// --- UTILITIES ---
+const MathUtils = {
+    lerp: (a, b, t) => a + (b - a) * t,
+    distance: (x1, y1, x2, y2) => Math.hypot(x2 - x1, y2 - y1),
+    randomRange: (min, max) => Math.random() * (max - min) + min,
+    randomInt: (min, max) => Math.floor(Math.random() * (max - min + 1)) + min
+};
+
+// --- SYSTEM: INPUT ---
+class InputManager {
+    constructor() {
+        this.keys = {};
+        this.mouse = { x: 0, y: 0, click: false };
+        window.addEventListener('keydown', e => this.keys[e.code] = true);
+        window.addEventListener('keyup', e => this.keys[e.code] = false);
+        window.addEventListener('mousedown', e => this.mouse.click = true);
+        window.addEventListener('mouseup', e => this.mouse.click = false);
+        window.addEventListener('mousemove', e => {
+            this.mouse.x = e.clientX;
+            this.mouse.y = e.clientY;
+        });
+    }
+    isPressed(code) { return !!this.keys[code]; }
+}
+const Input = new InputManager();
+
+// --- SYSTEM: CAMERA ---
+class Camera {
+    constructor() {
+        this.x = 0; this.y = 0;
+        this.shakeTime = 0;
+        this.shakeIntensity = 0;
+    }
+    follow(target, dt) {
+        // Smooth camera lerp
+        let targetX = target.x - canvas.width / 2;
+        let targetY = target.y - canvas.height / 2;
+        this.x = MathUtils.lerp(this.x, targetX, 5 * dt);
+        this.y = MathUtils.lerp(this.y, targetY, 5 * dt);
+
+        if (this.shakeTime > 0) {
+            this.x += (Math.random() - 0.5) * this.shakeIntensity;
+            this.y += (Math.random() - 0.5) * this.shakeIntensity;
+            this.shakeTime -= dt;
+        }
+    }
+    shake(intensity, duration) {
+        this.shakeIntensity = intensity;
+        this.shakeTime = duration;
+    }
+}
+const Cam = new Camera();
+
+// --- SYSTEM: MAP GENERATOR (Cellular Automata) ---
+class TileMap {
+    constructor(width, height, tileSize) {
+        this.cols = width;
+        this.rows = height;
+        this.tileSize = tileSize;
+        this.grid = [];
+        this.generate();
+    }
+    generate() {
+        // Fill random noise
+        for (let y = 0; y < this.rows; y++) {
+            let row = [];
+            for (let x = 0; x < this.cols; x++) {
+                row.push(Math.random() > 0.45 ? 1 : 0); // 1 is wall, 0 is floor
+            }
+            this.grid.push(row);
+        }
+        // Smooth (Cellular Automata rules)
+        for (let i = 0; i < 4; i++) this.smoothMap();
+        
+        // Build boundaries
+        for(let y=0; y<this.rows; y++) {
+            this.grid[y][0] = 1; this.grid[y][this.cols-1] = 1;
+        }
+        for(let x=0; x<this.cols; x++) {
+            this.grid[0][x] = 1; this.grid[this.rows-1][x] = 1;
+        }
+    }
+    smoothMap() {
+        let newGrid = JSON.parse(JSON.stringify(this.grid));
+        for (let y = 1; y < this.rows - 1; y++) {
+            for (let x = 1; x < this.cols - 1; x++) {
+                let neighbors = this.getWallCount(x, y);
+                if (neighbors > 4) newGrid[y][x] = 1;
+                else if (neighbors < 4) newGrid[y][x] = 0;
+            }
+        }
+        this.grid = newGrid;
+    }
+    getWallCount(x, y) {
+        let count = 0;
+        for (let i = -1; i <= 1; i++) {
+            for (let j = -1; j <= 1; j++) {
+                if (i === 0 && j === 0) continue;
+                if (this.grid[y + i][x + j] === 1) count++;
+            }
+        }
+        return count;
+    }
+    isSolid(x, y, radius = 0) {
+        // Cek 4 titik di sekitar radius (AABB sederhana)
+        let checks = [
+            {x: x - radius, y: y - radius},
+            {x: x + radius, y: y - radius},
+            {x: x - radius, y: y + radius},
+            {x: x + radius, y: y + radius}
+        ];
+        
+        for(let p of checks) {
+            let tx = Math.floor(p.x / this.tileSize);
+            let ty = Math.floor(p.y / this.tileSize);
+            if (tx < 0 || ty < 0 || tx >= this.cols || ty >= this.rows) return true;
+            if (this.grid[ty][tx] === 1) return true;
+        }
+        return false;
+    }
+    getOpenFloor() {
+        while(true) {
+            let x = MathUtils.randomInt(1, this.cols - 2);
+            let y = MathUtils.randomInt(1, this.rows - 2);
+            if (this.grid[y][x] === 0) return { x: x * this.tileSize, y: y * this.tileSize };
+        }
+    }
+    render(ctx, cam) {
+        let startCol = Math.max(0, Math.floor(cam.x / this.tileSize));
+        let endCol = Math.min(this.cols, startCol + Math.ceil(canvas.width / this.tileSize) + 1);
+        let startRow = Math.max(0, Math.floor(cam.y / this.tileSize));
+        let endRow = Math.min(this.rows, startRow + Math.ceil(canvas.height / this.tileSize) + 1);
+
+        for (let y = startRow; y < endRow; y++) {
+            for (let x = startCol; x < endCol; x++) {
+                let px = Math.floor(x * this.tileSize - cam.x);
+                let py = Math.floor(y * this.tileSize - cam.y);
+                
+                if (this.grid[y][x] === 1) {
+                    ctx.fillStyle = '#1e293b'; // Wall top
+                    ctx.fillRect(px, py, this.tileSize, this.tileSize);
+                    ctx.fillStyle = '#0f172a'; // Wall face
+                    ctx.fillRect(px, py + this.tileSize - 10, this.tileSize, 10);
+                } else {
+                    ctx.fillStyle = '#334155'; // Floor
+                    ctx.fillRect(px, py, this.tileSize, this.tileSize);
+                    // Floor texture detail
+                    ctx.fillStyle = '#475569';
+                    ctx.fillRect(px + 4, py + 4, 4, 4);
+                }
+            }
+        }
+    }
+}
+
+// --- CORE: ENTITIES ---
+class Entity {
+    constructor(x, y) {
+        this.x = x; this.y = y;
+        this.radius = 16;
+        this.vx = 0; this.vy = 0;
+        this.speed = 100;
+        this.hp = 100; this.maxHp = 100;
+        this.dead = false;
+        this.color = '#fff';
+        this.knockbackX = 0; this.knockbackY = 0;
+    }
+    applyDamage(amount, sourceX, sourceY) {
+        this.hp -= amount;
+        Game.ui.spawnFloatingText(this.x, this.y, `-${Math.ceil(amount)}`, '#ef4444');
+        
+        // Knockback calc
+        let angle = Math.atan2(this.y - sourceY, this.x - sourceX);
+        this.knockbackX = Math.cos(angle) * 300;
+        this.knockbackY = Math.sin(angle) * 300;
+
+        if (this.hp <= 0) this.die();
+    }
+    die() { this.dead = true; }
+    update(dt, map) {
+        // Apply knockback friction
+        this.knockbackX = MathUtils.lerp(this.knockbackX, 0, 10 * dt);
+        this.knockbackY = MathUtils.lerp(this.knockbackY, 0, 10 * dt);
+
+        let nx = this.x + (this.vx * this.speed * dt) + (this.knockbackX * dt);
+        let ny = this.y + (this.vy * this.speed * dt) + (this.knockbackY * dt);
+
+        // Slide collision
+        if (!map.isSolid(nx, this.y, this.radius)) this.x = nx;
+        if (!map.isSolid(this.x, ny, this.radius)) this.y = ny;
+    }
+    render(ctx, cam) {
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.beginPath();
+        ctx.ellipse(this.x - cam.x, this.y - cam.y + this.radius, this.radius, this.radius/2, 0, 0, Math.PI*2);
+        ctx.fill();
+
+        // Body
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x - cam.x, this.y - cam.y, this.radius, 0, Math.PI*2);
+        ctx.fill();
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+}
+
+class Player extends Entity {
+    constructor(x, y) {
+        super(x, y);
+        this.color = '#3b82f6';
+        this.speed = 200;
+        this.attackCooldown = 0;
+        
+        // RPG Stats
+        this.level = 1;
+        this.exp = 0;
+        this.nextExp = 100;
+        this.stats = { str: 5, agi: 5, int: 5 };
+        this.mana = 50; this.maxMana = 50;
+    }
+    update(dt, map) {
+        this.vx = 0; this.vy = 0;
+        if (Input.isPressed('KeyW') || Input.isPressed('ArrowUp')) this.vy = -1;
+        if (Input.isPressed('KeyS') || Input.isPressed('ArrowDown')) this.vy = 1;
+        if (Input.isPressed('KeyA') || Input.isPressed('ArrowLeft')) this.vx = -1;
+        if (Input.isPressed('KeyD') || Input.isPressed('ArrowRight')) this.vx = 1;
+
+        // Normalize diagonal speed
+        if (this.vx !== 0 && this.vy !== 0) {
+            let length = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+            this.vx /= length; this.vy /= length;
+        }
+
+        super.update(dt, map);
+
+        // Attack Logic
+        if (this.attackCooldown > 0) this.attackCooldown -= dt;
+        if (Input.isPressed('Space') && this.attackCooldown <= 0) {
+            this.attack();
+        }
+
+        // Mana regen
+        if (this.mana < this.maxMana) this.mana += 2 * dt;
+    }
+    attack() {
+        this.attackCooldown = 0.4 - (this.stats.agi * 0.01); // AGI reduces cooldown
+        Cam.shake(3, 0.1);
+        Game.particles.burst(this.x, this.y, '#f8fafc', 10);
+        
+        // Melee hitbox
+        Game.entities.forEach(e => {
+            if (e !== this && !e.dead) {
+                let dist = MathUtils.distance(this.x, this.y, e.x, e.y);
+                if (dist < this.radius + 40) { // Range
+                    let dmg = this.stats.str * 2 + MathUtils.randomInt(1, 5);
+                    let isCrit = Math.random() < 0.1; // 10% crit
+                    if(isCrit) { dmg *= 2; Cam.shake(10, 0.2); }
+                    
+                    e.applyDamage(dmg, this.x, this.y);
+                    Game.ui.log(`Anda menyerang Slime sebesar ${dmg} ${isCrit?'(CRIT!)':''}`);
+                }
+            }
+        });
+    }
+    gainExp(amount) {
+        this.exp += amount;
+        Game.ui.log(`Mendapatkan ${amount} EXP!`);
+        if (this.exp >= this.nextExp) {
+            this.levelUp();
+        }
+    }
+    levelUp() {
+        this.level++;
+        this.exp -= this.nextExp;
+        this.nextExp = Math.floor(this.nextExp * 1.5);
+        this.maxHp += 20; this.hp = this.maxHp;
+        this.maxMana += 10; this.mana = this.maxMana;
+        this.stats.str += 2; this.stats.agi += 1; this.stats.int += 1;
+        Game.ui.log(`Level Up! Anda sekarang Level ${this.level}`, '#eab308');
+        Game.particles.burst(this.x, this.y, '#eab308', 30);
+    }
+}
+
+class SlimeEnemy extends Entity {
+    constructor(x, y) {
+        super(x, y);
+        this.color = '#22c55e';
+        this.speed = 60;
+        this.maxHp = 30; this.hp = 30;
+        this.attackTimer = 0;
+    }
+    update(dt, map) {
+        let player = Game.player;
+        let dist = MathUtils.distance(this.x, this.y, player.x, player.y);
+
+        // AI Logic
+        if (dist < 300 && dist > this.radius + player.radius) {
+            let angle = Math.atan2(player.y - this.y, player.x - this.x);
+            this.vx = Math.cos(angle);
+            this.vy = Math.sin(angle);
+        } else {
+            this.vx = 0; this.vy = 0;
+        }
+
+        super.update(dt, map);
+
+        // Attack Player
+        if (dist <= this.radius + player.radius + 5) {
+            this.attackTimer += dt;
+            if (this.attackTimer > 1) { // Hit every 1 second
+                player.applyDamage(10, this.x, this.y);
+                this.attackTimer = 0;
+            }
+        } else {
+            this.attackTimer = 0;
+        }
+    }
+    die() {
+        super.die();
+        Game.particles.burst(this.x, this.y, this.color, 15);
+        Game.player.gainExp(25);
+    }
+}
+
+// --- SYSTEM: PARTICLES & FX ---
+class ParticleSystem {
+    constructor() { this.particles = []; }
+    burst(x, y, color, count) {
+        for(let i=0; i<count; i++) {
+            let angle = Math.random() * Math.PI * 2;
+            let speed = MathUtils.randomRange(50, 200);
+            this.particles.push({
+                x: x, y: y,
+                vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                life: 1.0, maxLife: 1.0, color: color, size: MathUtils.randomRange(2, 6)
+            });
+        }
+    }
+    update(dt) {
+        for(let i = this.particles.length - 1; i >= 0; i--) {
+            let p = this.particles[i];
+            p.x += p.vx * dt; p.y += p.vy * dt;
+            p.vx *= 0.9; p.vy *= 0.9; // Friction
+            p.life -= dt;
+            if (p.life <= 0) this.particles.splice(i, 1);
+        }
+    }
+    render(ctx, cam) {
+        this.particles.forEach(p => {
+            ctx.globalAlpha = p.life / p.maxLife;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x - cam.x, p.y - cam.y, p.size, p.size);
+        });
+        ctx.globalAlpha = 1.0;
+    }
+}
+
+// --- SYSTEM: UI MANAGER ---
+class UIManager {
+    constructor() {
+        this.floatingTexts = [];
+        this.logs = [];
+    }
+    spawnFloatingText(x, y, text, color) {
+        this.floatingTexts.push({ x, y, text, color, life: 1.0, maxLife: 1.0, vy: -50 });
+    }
+    log(msg, color = '#cbd5e1') {
+        const logContainer = document.getElementById('combat-log');
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        entry.style.color = color;
+        entry.innerText = `> ${msg}`;
+        logContainer.prepend(entry);
+        if (logContainer.children.length > 5) logContainer.removeChild(logContainer.lastChild);
+    }
+    update(dt) {
+        // Update Floating Text
+        for(let i = this.floatingTexts.length - 1; i >= 0; i--) {
+            let ft = this.floatingTexts[i];
+            ft.y += ft.vy * dt;
+            ft.life -= dt;
+            if (ft.life <= 0) this.floatingTexts.splice(i, 1);
+        }
+
+        // DOM Updates
+        let p = Game.player;
+        document.getElementById('ui-lvl').innerText = p.level;
+        document.getElementById('ui-hp').innerText = Math.max(0, Math.floor(p.hp));
+        document.getElementById('ui-maxhp').innerText = p.maxHp;
+        document.getElementById('bar-hp').style.width = `${Math.max(0, (p.hp/p.maxHp)*100)}%`;
+
+        document.getElementById('ui-mp').innerText = Math.floor(p.mana);
+        document.getElementById('ui-maxmp').innerText = p.maxMana;
+        document.getElementById('bar-mp').style.width = `${(p.mana/p.maxMana)*100}%`;
+
+        document.getElementById('ui-exp').innerText = p.exp;
+        document.getElementById('ui-nextexp').innerText = p.nextExp;
+        document.getElementById('bar-exp').style.width = `${(p.exp/p.nextExp)*100}%`;
+    }
+    render(ctx, cam) {
+        ctx.font = 'bold 20px Consolas';
+        ctx.textAlign = 'center';
+        this.floatingTexts.forEach(ft => {
+            ctx.globalAlpha = ft.life / ft.maxLife;
+            // Text Outline
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 3;
+            ctx.strokeText(ft.text, ft.x - cam.x, ft.y - cam.y);
+            // Text Fill
+            ctx.fillStyle = ft.color;
+            ctx.fillText(ft.text, ft.x - cam.x, ft.y - cam.y);
+        });
+        ctx.globalAlpha = 1.0;
+        ctx.textAlign = 'left';
+    }
+}
+
+// --- MAIN GAME LOOP ---
+const Game = {
+    lastTime: 0,
+    map: null,
+    player: null,
+    entities: [],
+    particles: new ParticleSystem(),
+    ui: new UIManager(),
+    
+    init() {
+        this.map = new TileMap(60, 60, 64); // 64px tiles
+        let startPos = this.map.getOpenFloor();
+        
+        this.player = new Player(startPos.x, startPos.y);
+        this.entities.push(this.player);
+
+        // Spawn Enemies
+        for(let i=0; i<30; i++) {
+            let p = this.map.getOpenFloor();
+            this.entities.push(new SlimeEnemy(p.x, p.y));
+        }
+
+        this.ui.log('System Initialization Complete.', '#3b82f6');
+        this.ui.log('NEXUS Engine v0.1 Online.', '#3b82f6');
+        requestAnimationFrame(this.loop.bind(this));
+    },
+
+    loop(timestamp) {
+        // Calculate Delta Time (dt) in seconds
+        let dt = (timestamp - this.lastTime) / 1000;
+        this.lastTime = timestamp;
+        if (dt > 0.1) dt = 0.1; // Prevent massive jump if tab is inactive
+
+        this.update(dt);
+        this.render();
+
+        requestAnimationFrame(this.loop.bind(this));
+    },
+
+    update(dt) {
+        // Update entities
+        this.entities.forEach(e => e.update(dt, this.map));
+        
+        // Remove dead entities
+        this.entities = this.entities.filter(e => !e.dead);
+        
+        // Update systems
+        this.particles.update(dt);
+        Cam.follow(this.player, dt);
+        this.ui.update(dt);
+    },
+
+    render() {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 1. Render Map (Background)
+        this.map.render(ctx, Cam);
+
+        // 2. Y-Sorting (Depth logic)
+        // Objek dengan koordinat Y lebih besar digambar paling akhir (di depan)
+        this.entities.sort((a, b) => a.y - b.y);
+
+        // 3. Render Entities
+        this.entities.forEach(e => e.render(ctx, Cam));
+
+        // 4. Render Particles
+        this.particles.render(ctx, Cam);
+
+        // 5. Render World UI (Floating Text)
+        this.ui.render(ctx, Cam);
+    }
+};
+
+// Start the engine
+Game.init();
+
+</script>
+</body>
+</html>

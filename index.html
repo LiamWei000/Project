@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Navigasi Tombol Responsif</title>
+  <style>
+    /* Gaya Dasar */
+    body {
+      font-family: 'Arial', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background-color: #f0f2f5;
+    }
+
+    /* INI KUNCI TOMBOLNYA */
+    .tombol-pindah {
+      /* Menghilangkan garis bawah khas link */
+      text-decoration: none;
+
+      /* Layout & Ukuran */
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 15px 35px;
+
+      /* Warna & Tampilan */
+      background-color: #25d366;
+      /* Warna Hijau */
+      color: white;
+      font-size: 18px;
+      font-weight: bold;
+      border-radius: 50px;
+      /* Membuat lonjong */
+
+      /* Efek Bayangan */
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+    }
+
+    /* Efek Hover (Saat Disentuh/Mouse Lewat) */
+    .tombol-pindah:hover {
+      background-color: #128c7e;
+      transform: scale(1.05);
+      /* Sedikit membesar */
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Ikon di dalam tombol */
+    .tombol-pindah svg {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+
+    /* PENGATURAN RESPONSIF (UNTUK HP) */
+    @media (max-width: 600px) {
+      .tombol-pindah {
+        width: 90%;
+        /* Tombol melebar hampir penuh di HP */
+        padding: 18px;
+        font-size: 20px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <a href="game.html" class="tombol-pindah">
+    <svg viewBox="0 0 24 24">
+      <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" />
+    </svg>
+    Buka Halaman Game
+  </a>
+
+</body>
+
+</html>

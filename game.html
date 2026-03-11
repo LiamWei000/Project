@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Portal koleksi game sederhana seperti Snake, Tic Tac Toe, dan Tebak Angka">
+    <title>Portal Game Seru</title>
+
+    <style>
+        /* Reset dasar */
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Body */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            padding: 40px 20px 20px;
+        }
+
+        h1 {
+            color: #e94560;
+            text-shadow: 2px 2px #0f3460;
+        }
+
+        /* Container */
+        .container {
+            width: 100%;
+            max-width: 1100px;
+            padding: 20px;
+        }
+
+        /* Grid Game */
+        .game-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        /* Card Game */
+        .game-card {
+            background: #16213e;
+            border-radius: 16px;
+            padding: 25px;
+            text-align: center;
+            border: 2px solid #0f3460;
+            transition: all .3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .game-card:hover {
+            transform: translateY(-8px);
+            border-color: #e94560;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Judul Game */
+        .game-card h3 {
+            margin-bottom: 10px;
+        }
+
+        /* Deskripsi */
+        .game-card p {
+            font-size: 14px;
+            color: #b8c1ec;
+        }
+
+        /* Tombol */
+        .btn-play {
+            display: inline-block;
+            margin-top: 18px;
+            padding: 10px 25px;
+            background: #e94560;
+            color: white;
+            text-decoration: none;
+            border-radius: 30px;
+            font-weight: bold;
+            transition: all .25s ease;
+        }
+
+        .btn-play:hover {
+            background: #c62842;
+            box-shadow: 0 0 15px rgba(233, 69, 96, .6);
+        }
+
+        /* Footer */
+        footer {
+            margin-top: auto;
+            padding: 20px;
+            font-size: 14px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>🎮 Koleksi Game</h1>
+        <p>Mainkan berbagai game seru langsung di browser!</p>
+    </header>
+
+    <main class="container">
+
+        <div class="game-container">
+
+            <div class="game-card">
+                <h3>Clawstrike</h3>
+                <p>Kucing yang kuat dan cerdas</p>
+                <a href="clawstrike/index.html" class="btn-play">Main Sekarang</a>
+            </div>
+
+            <div class="game-card">
+                <h3>Cat Survivors</h3>
+                <p>Selamatkan kucingnya dari bahaya</p>
+                <a href="cat-survivors/index.html" class="btn-play">Main Sekarang</a>
+            </div>
+
+            <div class="game-card">
+                <h3>Apayh</h3>
+                <p>Gatau, bingung mau dikasi nama apa ni game, soalnya agak absurd.</p>
+                <a href="project.html" class="btn-play">Main Sekarang</a>
+            </div>
+
+            <div class="game-card">
+                <h3>HexGL</h3>
+                <p>Gatau, bingung mau dikasi nama apa ni game, soalnya agak absurd.</p>
+                <a href="HexGL/index.html" class="btn-play">Main Sekarang</a>
+            </div>
+
+            <div class="game-card">
+                <h3>CZNull</h3>
+                <p>Ini bukan game btw, cuma alat untuk tes CPU/GPU.</p>
+                <a href="cznull/vsbm.html" class="btn-play">Cek klo gprcy</a>
+            </div>
+
+            <div class="game-card">
+                <h3>tiddlywiki</h3>
+                <p>Yang ini juga bukan game, tapi sesuatu yang mirip Wikipedia.</p>
+                <a href="tiddlywiki/tiddlywiki.html" class="btn-play">Telusuri</a>
+            </div>
+
+            <!-- <div class="game-card">
+                <h3>🔢 Tebak Angka</h3>
+                <p>Uji keberuntunganmu! Tebak angka dari 1 sampai 100.</p>
+                <a href="tebak-angka.html" class="btn-play">Main Sekarang</a>
+            </div> -->
+
+        </div>
+
+    </main>
+
+    <footer>
+        © 2026 Portal Game
+    </footer>
+
+</body>
+
+</html>
